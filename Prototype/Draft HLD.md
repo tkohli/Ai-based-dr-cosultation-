@@ -1,887 +1,1473 @@
-# High-Level Design: AI-Only Medical Consultation Platform (No Doctor Review)
+# High-Level Design: Integrated AI Healthcare Platform
+## AI Consultation + Medicine E-Commerce + Lab Testing
+
+---
 
 ## Executive Summary
 
-This document presents an alternative architecture for a fully automated AI-powered medical consultation platform that **eliminates doctor review** from the consultation flow. Patients interact directly with the AI agent, which generates and delivers prescriptions without human oversight. This approach prioritizes speed and cost-efficiency over medical oversight, making it suitable for low-risk, common conditions with appropriate disclaimers and liability management.
+This document presents the technical architecture for a comprehensive AI-powered healthcare platform that integrates three core services: **AI-based medical consultations, medicine e-commerce, and lab test ordering**. The platform eliminates doctor involvement entirely, relying on AI to generate prescriptions that seamlessly flow into the medicine ordering system, while also enabling direct lab test bookings with partner laboratories.
 
-**Key Difference**: Prescriptions are generated and delivered instantly by AI without doctor approval, reducing consultation time from 20 minutes to under 5 minutes and cutting operational costs by ~60%.
+**Core Value Proposition**: A one-stop healthcare solution where patients receive AI consultations, order prescribed medicines instantly from an integrated pharmacy, and book lab tests - all within a single platform with unified user experience and data flow.
 
-## Architectural Comparison: Doctor-Reviewed vs AI-Only
+**Target Market**: Indian consumers (urban and semi-urban) seeking convenient, affordable healthcare services with fast medicine delivery and reliable lab testing facilities.
 
-### Doctor-Reviewed Flow (Original Design)
-```
-Patient → AI Chat → Prescription Generated → Doctor Reviews → Doctor Approves → Patient Receives
-         (10 min)        (1 min)              (5-15 min)      (30 sec)         (instant)
-Total Time: 15-30 minutes
-```
+**Key Metrics**:
+- **Consultation Time**: 3-5 minutes from start to prescription
+- **Medicine Delivery**: 30 minutes to 2 hours (based on location)
+- **Lab Booking**: Instant confirmation, sample collection within 24 hours
+- **Target Scale**: 10,000 daily consultations, 15,000 medicine orders, 3,000 lab bookings
 
-### AI-Only Flow (This Design)
-```
-Patient → AI Chat → Prescription Generated → Patient Receives
-         (3-5 min)       (10 sec)             (instant)
-Total Time: 3-6 minutes
-```
+---
+
+## Strategic Context
+
+### Market Opportunity
+
+**Problem Space**:
+1. **Fragmented Healthcare Journey**: Patients visit multiple platforms for consultation, medicine purchase, and lab tests
+2. **High Medicine Costs**: Traditional pharmacies have higher margins and limited inventory visibility
+3. **Lab Test Complexity**: Booking lab tests requires phone calls, unclear pricing, and scheduling hassles
+4. **Time Consumption**: Entire healthcare journey from symptom to treatment takes hours or days
+
+**Our Solution**:
+A vertically integrated platform providing end-to-end healthcare services:
+- **AI Consultation** → Instant diagnosis and prescription
+- **Smart Pharmacy** → One-click medicine ordering from prescription
+- **Lab Network** → Seamless test booking with transparent pricing
+- **Health Records** → Unified digital health history
+
+### Business Model
+
+**Revenue Streams**:
+1. **Consultation Fees**: ₹49-99 per AI consultation
+2. **Medicine Sales**: 15-25% margin on medicines (competitive with online pharmacies)
+3. **Lab Commission**: 10-20% commission on lab test bookings
+4. **Subscription Plans**: ₹499/month for unlimited consultations + medicine discounts
+5. **Premium Features**: Health monitoring, report analysis, medicine subscriptions
+
+**Unit Economics** (at scale):
+- Average Order Value: ₹450 (₹50 consultation + ₹300 medicines + ₹100 lab tests)
+- Blended Margin: 40% across all services
+- Customer Acquisition Cost: ₹200
+- Lifetime Value: ₹2,500 (assuming 6 consultations/year for 2 years)
+
+---
 
 ## System Architecture Overview
 
-### Simplified High-Level Architecture
+### High-Level Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                         Presentation Layer                       │
-│                  ┌──────────────────┐                           │
-│                  │  Patient Web App │                           │
-│                  │    (React SPA)   │                           │
-│                  └──────────────────┘                           │
-└───────────────────────────┬─────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      API Gateway Layer                           │
-│           (AWS API Gateway + CloudFront CDN)                     │
-└───────────────────────────┬─────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                     Application Layer                            │
-│  ┌─────────────┐  ┌──────────────┐  ┌───────────────┐         │
-│  │   Patient   │  │     AI       │  │  Prescription │         │
-│  │   Service   │  │  Agent       │  │    Service    │         │
-│  │             │  │  Service     │  │               │         │
-│  └─────────────┘  └──────────────┘  └───────────────┘         │
-│                                                                  │
-│  ┌─────────────┐  ┌──────────────┐  ┌───────────────┐         │
-│  │   Auth      │  │ Notification │  │   Knowledge   │         │
-│  │   Service   │  │   Service    │  │     Base      │         │
-│  │             │  │              │  │   Service     │         │
-│  └─────────────┘  └──────────────┘  └───────────────┘         │
-└───────────────────────────┬─────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      Data Layer                                  │
-│  ┌─────────────┐  ┌──────────────┐  ┌───────────────┐         │
-│  │ PostgreSQL  │  │   AWS S3     │  │  OpenAI API   │         │
-│  │   (RDS)     │  │  (Storage)   │  │  (External)   │         │
-│  └─────────────┘  └──────────────┘  └───────────────┘         │
-└─────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                            PATIENT WEB/MOBILE APP                            │
+│  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐         │
+│  │  AI Consultation │  │   Medicine Store  │  │   Lab Booking    │         │
+│  │     Module       │  │     Module        │  │     Module       │         │
+│  └──────────────────┘  └──────────────────┘  └──────────────────┘         │
+└────────────────┬────────────────┬─────────────────┬────────────────────────┘
+                 │                │                 │
+                 ▼                ▼                 ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          API GATEWAY (AWS API Gateway)                       │
+│                  Authentication | Rate Limiting | Routing                    │
+└────────────────┬────────────────┬─────────────────┬────────────────────────┘
+                 │                │                 │
+      ┌──────────▼─────┐  ┌──────▼────────┐  ┌────▼──────────┐
+      │  Consultation  │  │   E-Commerce  │  │  Lab Booking  │
+      │    Service     │  │    Service    │  │    Service    │
+      │  (AI Engine)   │  │  (Inventory)  │  │  (Partners)   │
+      └────────┬───────┘  └───────┬───────┘  └───────┬───────┘
+               │                  │                  │
+               ▼                  ▼                  ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│                          SHARED SERVICES LAYER                            │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐   │
+│  │   Patient   │  │   Payment   │  │   Order     │  │ Notification│   │
+│  │   Service   │  │   Service   │  │ Management  │  │   Service   │   │
+│  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘   │
+└──────────────────────────────────────────────────────────────────────────┘
+               │                  │                  │
+               ▼                  ▼                  ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│                           DATA & STORAGE LAYER                            │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐   │
+│  │ PostgreSQL  │  │  MongoDB    │  │   Redis     │  │   AWS S3    │   │
+│  │ (Relational)│  │ (Documents) │  │   (Cache)   │  │   (Files)   │   │
+│  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘   │
+└──────────────────────────────────────────────────────────────────────────┘
+               │                  │                  │
+               ▼                  ▼                  ▼
+┌──────────────────────────────────────────────────────────────────────────┐
+│                        EXTERNAL INTEGRATIONS                              │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐   │
+│  │   OpenAI    │  │  Razorpay   │  │   Lab API   │  │  Logistics  │   │
+│  │     API     │  │  (Payment)  │  │  Partners   │  │  Partners   │   │
+│  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘   │
+└──────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Components Removed
-- ❌ **Doctor Dashboard** - No longer needed
-- ❌ **Doctor Review Service** - Eliminated
-- ❌ **Doctor Authentication** - Not required
-- ❌ **Queue Management** - No review queue needed
-- ❌ **Doctor Notification System** - Unnecessary
+### Architecture Principles
 
-### Simplified Workflow
+1. **Unified Patient Experience**: Single login, seamless navigation between consultation, pharmacy, and lab services
+2. **Data Integration**: Consultation history informs medicine recommendations and lab test suggestions
+3. **Microservices with Shared Services**: Core services (Consultation, E-commerce, Lab) are independent but share common utilities
+4. **Event-Driven Architecture**: Services communicate via events for loose coupling
+5. **API-First Design**: All functionality exposed via REST/GraphQL APIs
+6. **Multi-Tenant Ready**: Architecture supports white-label deployments for partners
 
-**Consultation State Machine (Simplified)**:
-```
-STARTED → GATHERING_INFO → AI_GENERATING → COMPLETED
-```
+---
 
-**Prescription States (Simplified)**:
-```
-GENERATING → DELIVERED
-```
+## Core Service Modules
 
-## Key Architectural Changes
+### Module 1: AI Consultation Service
 
-### 1. Direct Prescription Delivery
+**Purpose**: Conduct AI-powered medical consultations and generate prescriptions
 
-**AI Agent Service - Enhanced Responsibilities**:
-- Gather patient information through conversation
-- Generate prescription using OpenAI with medical knowledge base
-- **Validate prescription against safety rules** (critical without doctor oversight)
-- **Automatic delivery to patient** (no approval gate)
-- Generate PDF and store in patient history
+**Key Features**:
+- Conversational AI interface (text + voice-to-text)
+- Multi-language support (Hindi, English, regional languages)
+- Symptom analysis and prescription generation
+- Medical knowledge base integration
+- Safety validation and emergency detection
+- Consultation history and health records
 
-**Safety Validation Rules (Automated)**:
+**Technical Components**:
+
 ```typescript
-interface PrescriptionValidation {
-  checkControlledSubstances(): boolean;  // Block opioids, benzos
-  checkDrugInteractions(): boolean;      // Cross-check with current meds
-  checkAllergyConflicts(): boolean;      // Verify against patient allergies
-  checkDosageRanges(): boolean;          // Ensure within safe limits
-  checkConditionSeverity(): boolean;     // Flag complex cases
-  checkEmergencySymptoms(): boolean;     // Redirect to emergency care
+// Consultation Flow
+interface ConsultationService {
+  // Core Operations
+  startConsultation(patientId: string, language: string): Consultation;
+  processMessage(consultationId: string, message: string): AIResponse;
+  generatePrescription(consultationId: string): Prescription;
+  completeConsultation(consultationId: string): ConsultationSummary;
+  
+  // AI Integration
+  callOpenAI(prompt: string, context: ConversationContext): string;
+  validatePrescription(prescription: Prescription): ValidationResult;
+  detectEmergency(symptoms: string[]): boolean;
+  
+  // Knowledge Base
+  getMedicineInfo(medicineName: string): MedicineDetails;
+  getProtocol(condition: string): TreatmentProtocol;
+  checkDrugInteractions(medicines: Medicine[]): InteractionWarnings;
 }
 
-async function generateAndDeliverPrescription(consultationId: string) {
-  const prescription = await aiService.generatePrescription(consultationId);
+// Data Models
+interface Consultation {
+  id: string;
+  patientId: string;
+  status: 'ACTIVE' | 'COMPLETED' | 'ABANDONED';
+  language: string;
+  chiefComplaint: string;
+  messages: Message[];
+  extractedData: {
+    symptoms: string[];
+    duration: string;
+    severity: string;
+    allergies: string[];
+    currentMedications: string[];
+  };
+  prescription?: Prescription;
+  createdAt: Date;
+  completedAt?: Date;
+}
+
+interface Prescription {
+  id: string;
+  consultationId: string;
+  diagnosis: string;
+  medicines: PrescribedMedicine[];
+  lifestyleAdvice: string[];
+  redFlags: string[];
+  followUpDays: number;
+  validityDays: number; // Prescription validity
+  eRxNumber: string; // Electronic prescription number
+}
+
+interface PrescribedMedicine {
+  medicineId: string;
+  medicineName: string;
+  dosage: string;
+  frequency: string;
+  duration: string;
+  quantity: number; // Number of units to purchase
+  instructions: string;
+}
+```
+
+**API Endpoints**:
+
+```
+POST   /api/v1/consultations/start
+POST   /api/v1/consultations/:id/messages
+GET    /api/v1/consultations/:id
+POST   /api/v1/consultations/:id/complete
+GET    /api/v1/consultations/:id/prescription
+```
+
+**AI Safety Mechanisms**:
+1. **Emergency Detection**: Redirects critical symptoms to emergency services
+2. **Controlled Substances**: Blocks opioids, benzos, and high-risk medications
+3. **Age Restrictions**: No prescriptions for children under 12 without guardian
+4. **Confidence Threshold**: Manual review fallback for low-confidence diagnoses
+5. **Drug Interactions**: Validates against patient's current medications
+6. **Allergy Check**: Cross-references with patient's allergy history
+
+---
+
+### Module 2: Medicine E-Commerce Service
+
+**Purpose**: Online pharmacy for medicine ordering with prescription validation
+
+**Key Features**:
+- Medicine catalog with search and filters
+- Prescription-to-cart conversion (one-click from consultation)
+- Generic medicine substitution suggestions
+- Inventory management across multiple warehouses
+- Order tracking and delivery management
+- Medicine reminders and auto-refill
+
+**Technical Components**:
+
+```typescript
+interface ECommerceService {
+  // Catalog Management
+  searchMedicines(query: string, filters: SearchFilters): Medicine[];
+  getMedicineDetails(medicineId: string): MedicineDetails;
+  getAlternatives(medicineId: string): Medicine[]; // Generic alternatives
+  checkAvailability(medicineId: string, pincode: string): InventoryStatus;
   
-  // Automated validation
-  const validation = await validatePrescription(prescription);
+  // Cart & Orders
+  addToCart(patientId: string, items: CartItem[]): Cart;
+  createOrderFromPrescription(prescriptionId: string): Order;
+  validatePrescription(prescriptionId: string, items: OrderItem[]): boolean;
+  placeOrder(orderId: string, deliveryAddress: Address): OrderConfirmation;
+  trackOrder(orderId: string): OrderStatus;
   
-  if (!validation.isValid) {
-    // Flag consultation for manual review (fallback safety)
-    await flagForManualReview(consultationId, validation.issues);
-    return { status: 'PENDING_REVIEW' };
+  // Inventory Management
+  getInventory(warehouseId: string): InventoryItem[];
+  updateStock(medicineId: string, quantity: number): void;
+  allocateInventory(orderId: string): AllocationResult;
+  
+  // Pricing & Discounts
+  calculatePrice(items: CartItem[]): PriceBreakdown;
+  applyDiscount(orderId: string, couponCode: string): DiscountResult;
+}
+
+// Data Models
+interface Medicine {
+  id: string;
+  name: string;
+  genericName: string;
+  manufacturer: string;
+  category: string;
+  form: 'Tablet' | 'Capsule' | 'Syrup' | 'Injection' | 'Cream' | 'Drops';
+  strength: string;
+  packSize: string; // "10 tablets", "100ml bottle"
+  mrp: number;
+  sellingPrice: number;
+  discount: number;
+  prescriptionRequired: boolean;
+  schedule: 'H' | 'H1' | 'X' | 'OTC'; // Drug scheduling
+  images: string[];
+  description: string;
+  composition: string;
+  uses: string[];
+  sideEffects: string[];
+  contraindications: string[];
+}
+
+interface Order {
+  id: string;
+  orderNumber: string;
+  patientId: string;
+  prescriptionId?: string;
+  items: OrderItem[];
+  pricing: {
+    subtotal: number;
+    medicineDiscount: number;
+    deliveryCharge: number;
+    tax: number;
+    total: number;
+  };
+  deliveryAddress: Address;
+  paymentMethod: string;
+  paymentStatus: 'PENDING' | 'PAID' | 'FAILED';
+  orderStatus: 'PLACED' | 'CONFIRMED' | 'PACKED' | 'SHIPPED' | 'DELIVERED' | 'CANCELLED';
+  warehouseId: string;
+  deliveryPartnerId?: string;
+  trackingUrl?: string;
+  estimatedDelivery: Date;
+  createdAt: Date;
+}
+
+interface InventoryItem {
+  medicineId: string;
+  warehouseId: string;
+  quantity: number;
+  batchNumber: string;
+  expiryDate: Date;
+  reorderLevel: number;
+  lastRestocked: Date;
+}
+```
+
+**API Endpoints**:
+
+```
+// Medicine Catalog
+GET    /api/v1/medicines/search?q={query}&category={category}
+GET    /api/v1/medicines/:id
+GET    /api/v1/medicines/:id/alternatives
+POST   /api/v1/medicines/check-availability
+
+// Cart & Orders
+POST   /api/v1/cart/add
+GET    /api/v1/cart
+POST   /api/v1/orders/from-prescription/:prescriptionId
+POST   /api/v1/orders
+GET    /api/v1/orders/:id
+GET    /api/v1/orders/:id/track
+
+// Inventory (Internal)
+GET    /api/v1/inventory/warehouse/:warehouseId
+PUT    /api/v1/inventory/:medicineId/stock
+```
+
+**Smart Features**:
+
+1. **Prescription-to-Cart Intelligence**:
+```typescript
+async function createOrderFromPrescription(prescriptionId: string) {
+  const prescription = await getPrescription(prescriptionId);
+  const cart = { items: [] };
+  
+  for (const medicine of prescription.medicines) {
+    // Find exact medicine or generic alternative
+    const availableMedicine = await findAvailableMedicine(
+      medicine.medicineName,
+      medicine.quantity,
+      patient.pincode
+    );
+    
+    if (!availableMedicine) {
+      // Suggest alternatives
+      const alternatives = await findAlternatives(medicine.medicineName);
+      cart.items.push({
+        prescribedMedicine: medicine,
+        alternatives: alternatives,
+        status: 'NEEDS_SELECTION'
+      });
+    } else {
+      cart.items.push({
+        medicineId: availableMedicine.id,
+        quantity: medicine.quantity,
+        status: 'AVAILABLE'
+      });
+    }
   }
   
-  // Auto-approve and deliver
-  prescription.status = 'APPROVED';
-  prescription.approved_at = new Date();
-  prescription.approved_by = 'AI_SYSTEM';
-  
-  await savePrescription(prescription);
-  await generatePDF(prescription);
-  await notifyPatient(consultationId, prescription.id);
-  
-  return { status: 'DELIVERED', prescription_id: prescription.id };
+  return cart;
 }
 ```
 
-### 2. Simplified Database Schema
-
-**Removed Tables**:
-- `doctors` - No doctor accounts
-- `doctor_availability` - Not needed
-- `consultation_assignments` - No assignment logic
-
-**Modified Tables**:
-
-**consultations** (simplified)
-```sql
-CREATE TABLE consultations (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  patient_id UUID REFERENCES patients(id) ON DELETE RESTRICT,
-  status VARCHAR(50) NOT NULL, 
-    -- ACTIVE, AI_GENERATING, COMPLETED, FLAGGED_FOR_REVIEW
-  urgency_level VARCHAR(20) DEFAULT 'ROUTINE',
-  language VARCHAR(10) NOT NULL DEFAULT 'en',
-  chief_complaint TEXT,
-  ai_extracted_data JSONB,
-  started_at TIMESTAMP DEFAULT NOW(),
-  completed_at TIMESTAMP,
-  
-  -- No doctor assignment fields
-  
-  INDEX idx_patient (patient_id),
-  INDEX idx_status (status)
-);
+2. **Generic Substitution Engine**:
+```typescript
+function suggestGenericAlternatives(brandMedicine: Medicine): Medicine[] {
+  // Find medicines with same composition at lower price
+  return medicines.filter(m => 
+    m.composition === brandMedicine.composition &&
+    m.sellingPrice < brandMedicine.sellingPrice &&
+    m.id !== brandMedicine.id
+  ).sort((a, b) => a.sellingPrice - b.sellingPrice);
+}
 ```
 
-**prescriptions** (simplified)
-```sql
-CREATE TABLE prescriptions (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  consultation_id UUID REFERENCES consultations(id) ON DELETE RESTRICT,
-  status VARCHAR(50) NOT NULL, -- GENERATING, DELIVERED, FLAGGED
+3. **Intelligent Inventory Allocation**:
+```typescript
+async function allocateInventory(order: Order): Promise<AllocationResult> {
+  // Find nearest warehouse with all items in stock
+  const warehouses = await getWarehouses(order.deliveryAddress.pincode);
   
-  -- AI Generated (now final)
-  diagnosis TEXT NOT NULL,
-  medications JSONB NOT NULL,
-  lifestyle_advice TEXT[],
-  red_flags TEXT[],
-  ai_reasoning TEXT,
-  confidence_level VARCHAR(20), -- HIGH, MEDIUM, LOW
+  for (const warehouse of warehouses) {
+    const availability = await checkWarehouseInventory(
+      warehouse.id,
+      order.items
+    );
+    
+    if (availability.allItemsAvailable) {
+      return {
+        warehouseId: warehouse.id,
+        estimatedDeliveryTime: calculateDeliveryTime(
+          warehouse.location,
+          order.deliveryAddress
+        ),
+        items: availability.items
+      };
+    }
+  }
   
-  -- Automated validation
-  validation_passed BOOLEAN DEFAULT TRUE,
-  validation_issues JSONB,
-  
-  -- Delivery
-  delivered_at TIMESTAMP,
-  pdf_url TEXT,
-  
-  created_at TIMESTAMP DEFAULT NOW(),
-  
-  UNIQUE (consultation_id),
-  INDEX idx_status (status),
-  INDEX idx_confidence (confidence_level)
-);
+  // Split order across multiple warehouses if needed
+  return await splitOrderAllocation(order);
+}
 ```
 
-### 3. Enhanced AI Safety Mechanisms
+**Warehouse Management**:
+- Multiple warehouse support (Delhi, Mumbai, Bangalore, etc.)
+- Real-time inventory tracking
+- Expiry date management (FIFO/FEFO)
+- Low stock alerts and auto-reordering
+- Batch tracking for quality control
 
-Since there's no doctor oversight, AI safety becomes critical:
+---
 
-**Multi-Layer Safety System**:
+### Module 3: Lab Testing Service
+
+**Purpose**: Lab test booking with partner laboratories
+
+**Key Features**:
+- Lab test catalog with descriptions and pricing
+- Partner lab network management
+- Home sample collection scheduling
+- Test report upload and management
+- AI-powered report analysis
+- Test recommendations based on consultation
+
+**Technical Components**:
 
 ```typescript
-class AIAgentService {
-  private safetyChecks = {
-    // Layer 1: Emergency Detection
-    emergencyKeywords: [
-      'chest pain', 'can\'t breathe', 'unconscious', 
-      'severe bleeding', 'stroke symptoms', 'suicidal'
-    ],
-    
-    // Layer 2: Controlled Substance Prevention
-    bannedMedications: [
-      'opioids', 'benzodiazepines', 'stimulants',
-      'codeine', 'tramadol', 'morphine', 'diazepam'
-    ],
-    
-    // Layer 3: Complex Condition Flags
-    complexConditions: [
-      'cardiac', 'neurological', 'pregnancy complications',
-      'psychiatric crisis', 'multiple chronic conditions'
-    ],
-    
-    // Layer 4: Age-Based Restrictions
-    pediatricAgeLimit: 12, // No prescriptions under age 12
-    geriatricAgeThreshold: 70, // Extra caution above 70
-    
-    // Layer 5: Antibiotic Restrictions
-    antibioticRequiresStrongEvidence: true
-  };
+interface LabService {
+  // Test Catalog
+  searchTests(query: string, category: string): LabTest[];
+  getTestDetails(testId: string): LabTestDetails;
+  getTestPackages(): LabPackage[]; // Popular test bundles
+  checkLabAvailability(testId: string, pincode: string): LabPartner[];
   
-  async validatePrescriptionSafety(
-    prescription: AIPrescription,
-    patient: Patient,
-    conversation: Message[]
-  ): Promise<ValidationResult> {
-    const issues: string[] = [];
-    
-    // Check 1: Emergency symptoms
-    if (this.detectEmergency(conversation)) {
-      return {
-        isValid: false,
-        reason: 'EMERGENCY_DETECTED',
-        action: 'REDIRECT_TO_EMERGENCY_CARE'
-      };
-    }
-    
-    // Check 2: Controlled substances
-    if (this.containsControlledSubstances(prescription.medications)) {
-      return {
-        isValid: false,
-        reason: 'CONTROLLED_SUBSTANCE_ATTEMPTED',
-        action: 'FLAG_FOR_MANUAL_REVIEW'
-      };
-    }
-    
-    // Check 3: Drug interactions
-    const interactions = await this.checkDrugInteractions(
-      prescription.medications,
-      patient.current_medications
-    );
-    if (interactions.severe) {
-      issues.push('SEVERE_DRUG_INTERACTION');
-    }
-    
-    // Check 4: Allergy conflicts
-    const allergyConflicts = this.checkAllergyConflicts(
-      prescription.medications,
-      patient.allergies
-    );
-    if (allergyConflicts.length > 0) {
-      return {
-        isValid: false,
-        reason: 'ALLERGY_CONFLICT',
-        conflicts: allergyConflicts
-      };
-    }
-    
-    // Check 5: Age restrictions
-    if (patient.age < this.safetyChecks.pediatricAgeLimit) {
-      return {
-        isValid: false,
-        reason: 'PEDIATRIC_RESTRICTION',
-        action: 'REQUIRE_IN_PERSON_VISIT'
-      };
-    }
-    
-    // Check 6: Confidence threshold
-    if (prescription.confidence_level === 'LOW') {
-      return {
-        isValid: false,
-        reason: 'LOW_CONFIDENCE',
-        action: 'FLAG_FOR_MANUAL_REVIEW'
-      };
-    }
-    
-    // Check 7: Dosage validation
-    const dosageValidation = await this.validateDosages(
-      prescription.medications
-    );
-    if (!dosageValidation.isValid) {
-      issues.push('DOSAGE_OUT_OF_RANGE');
-    }
+  // Booking
+  createBooking(patientId: string, tests: string[], labId: string): Booking;
+  scheduleCollection(bookingId: string, slot: TimeSlot): boolean;
+  cancelBooking(bookingId: string): boolean;
+  rescheduleBooking(bookingId: string, newSlot: TimeSlot): boolean;
+  
+  // Reports
+  uploadReport(bookingId: string, reportFile: File): Report;
+  getReports(patientId: string): Report[];
+  analyzeReport(reportId: string): ReportAnalysis; // AI analysis
+  
+  // Partner Management
+  getLabPartners(pincode: string): LabPartner[];
+  syncLabInventory(labId: string): void;
+  updateLabPricing(labId: string, pricing: LabPricing[]): void;
+}
+
+// Data Models
+interface LabTest {
+  id: string;
+  name: string;
+  description: string;
+  category: string; // "Blood", "Urine", "Imaging", "Biopsy"
+  parameters: string[]; // Individual tests included
+  preparation: string; // "Fasting required", "No special preparation"
+  sampleType: string; // "Blood", "Urine", "Stool"
+  reportTime: string; // "6 hours", "24 hours", "3 days"
+  price: number;
+  discountedPrice?: number;
+  homeCollectionAvailable: boolean;
+  homeCollectionCharge: number;
+}
+
+interface LabPartner {
+  id: string;
+  name: string;
+  accreditation: string[]; // "NABL", "CAP", "ISO"
+  rating: number;
+  reviewCount: number;
+  servicedPincodes: string[];
+  availableTests: string[]; // test IDs
+  pricing: LabPricing[];
+  homeCollectionSlots: TimeSlot[];
+  labLocations: LabLocation[];
+}
+
+interface Booking {
+  id: string;
+  bookingNumber: string;
+  patientId: string;
+  consultationId?: string; // If recommended by AI
+  labPartnerId: string;
+  tests: BookedTest[];
+  collectionType: 'HOME' | 'LAB_VISIT';
+  collectionAddress?: Address;
+  scheduledSlot?: TimeSlot;
+  pricing: {
+    testCharges: number;
+    homeCollectionCharge: number;
+    discount: number;
+    total: number;
+  };
+  paymentStatus: 'PENDING' | 'PAID' | 'REFUNDED';
+  bookingStatus: 'SCHEDULED' | 'SAMPLE_COLLECTED' | 'PROCESSING' | 'COMPLETED' | 'CANCELLED';
+  reportId?: string;
+  createdAt: Date;
+}
+
+interface Report {
+  id: string;
+  bookingId: string;
+  patientId: string;
+  testResults: TestResult[];
+  uploadedAt: Date;
+  fileUrl: string;
+  aiAnalysis?: {
+    summary: string;
+    abnormalFindings: string[];
+    recommendations: string[];
+    severity: 'NORMAL' | 'ATTENTION_NEEDED' | 'URGENT';
+  };
+}
+
+interface TestResult {
+  parameterName: string;
+  value: string;
+  unit: string;
+  referenceRange: string;
+  status: 'NORMAL' | 'HIGH' | 'LOW' | 'CRITICAL';
+}
+```
+
+**API Endpoints**:
+
+```
+// Test Catalog
+GET    /api/v1/lab/tests/search?q={query}&category={category}
+GET    /api/v1/lab/tests/:id
+GET    /api/v1/lab/packages
+GET    /api/v1/lab/partners?pincode={pincode}
+
+// Bookings
+POST   /api/v1/lab/bookings
+GET    /api/v1/lab/bookings/:id
+PUT    /api/v1/lab/bookings/:id/schedule
+DELETE /api/v1/lab/bookings/:id/cancel
+
+// Reports
+POST   /api/v1/lab/reports/upload
+GET    /api/v1/lab/reports?patientId={patientId}
+GET    /api/v1/lab/reports/:id
+GET    /api/v1/lab/reports/:id/analysis
+```
+
+**Integration with Lab Partners**:
+
+```typescript
+// Lab Partner API Integration
+interface LabPartnerAPI {
+  // Booking Flow
+  checkAvailability(testIds: string[], pincode: string): AvailabilityResponse;
+  createBooking(booking: BookingRequest): BookingConfirmation;
+  getAvailableSlots(pincode: string, date: Date): TimeSlot[];
+  
+  // Sample Collection
+  confirmCollection(bookingId: string): void;
+  updateStatus(bookingId: string, status: string): void;
+  
+  // Reports
+  getReportStatus(bookingId: string): ReportStatus;
+  downloadReport(bookingId: string): File;
+  
+  // Webhook for status updates
+  onStatusUpdate(callback: (booking: Booking) => void): void;
+}
+
+// Example: Thyrocare Integration
+class ThyrocareAdapter implements LabPartnerAPI {
+  private apiKey: string;
+  private baseUrl: string;
+  
+  async createBooking(booking: BookingRequest): Promise<BookingConfirmation> {
+    const response = await axios.post(`${this.baseUrl}/api/ORDER/createOrder`, {
+      API_KEY: this.apiKey,
+      PRODUCT: booking.tests.map(t => t.code).join(','),
+      MOBILE: booking.patient.mobile,
+      ADDRESS: booking.address,
+      PINCODE: booking.pincode,
+      DATE: booking.preferredDate,
+      TIME: booking.preferredSlot
+    });
     
     return {
-      isValid: issues.length === 0,
-      issues: issues,
-      confidence: prescription.confidence_level
+      partnerBookingId: response.data.order_id,
+      status: 'CONFIRMED',
+      collectionSlot: response.data.scheduled_time
     };
   }
 }
 ```
 
-### 4. Consultation Flow APIs (Updated)
+**Smart Lab Recommendations**:
 
-**Complete Consultation with Instant Delivery**:
-
-```
-POST /api/v1/consultations/{consultation_id}/complete
-Authorization: Bearer {patient_jwt_token}
-
-Response: 200 OK
-{
-  "consultation_id": "uuid",
-  "status": "COMPLETED",
-  "prescription": {
-    "id": "uuid",
-    "diagnosis": "Viral Fever with Headache",
-    "confidence_level": "HIGH",
-    "medications": [
-      {
-        "medicine_name": "Paracetamol",
-        "dosage": "500mg",
-        "frequency": "Three times daily",
-        "duration": "5 days",
-        "instructions": "Take after meals with water"
-      }
-    ],
-    "lifestyle_advice": [
-      "Drink plenty of fluids (3-4 liters per day)",
-      "Take adequate rest",
-      "Avoid cold beverages"
-    ],
-    "red_flags": [
-      "If fever persists beyond 5 days",
-      "If you develop difficulty breathing",
-      "If you experience severe headache with vomiting"
-    ],
-    "delivered_at": "2025-01-15T10:35:00Z",
-    "pdf_url": "https://cdn.example.com/prescriptions/uuid.pdf"
-  },
-  "disclaimer": "This prescription is generated by AI. Consult a doctor if symptoms worsen or persist."
+```typescript
+// AI suggests relevant tests based on consultation
+async function recommendLabTests(consultation: Consultation): Promise<LabTest[]> {
+  const symptoms = consultation.extractedData.symptoms;
+  const diagnosis = consultation.prescription?.diagnosis;
+  
+  const prompt = `
+    Based on these symptoms: ${symptoms.join(', ')}
+    And diagnosis: ${diagnosis}
+    
+    Recommend relevant lab tests that would help confirm diagnosis or monitor condition.
+    Return as JSON array with test names.
+  `;
+  
+  const aiResponse = await openai.chat.completions.create({
+    model: "gpt-4",
+    messages: [{ role: "user", content: prompt }],
+    response_format: { type: "json_object" }
+  });
+  
+  const recommendedTestNames = JSON.parse(aiResponse.choices[0].message.content).tests;
+  
+  // Match with our test catalog
+  return await getTestsByNames(recommendedTestNames);
 }
 ```
 
-**Manual Review Fallback (Edge Cases)**:
-```
-Response: 202 Accepted
-{
-  "consultation_id": "uuid",
-  "status": "FLAGGED_FOR_REVIEW",
-  "message": "Your consultation requires additional review for safety. A healthcare professional will review within 2 hours.",
-  "reason": "Complex medical history detected",
-  "estimated_review_time": "2 hours"
+---
+
+## Shared Services Layer
+
+### Patient Service
+
+**Purpose**: Centralized patient data management
+
+```typescript
+interface PatientService {
+  // Profile Management
+  createPatient(data: PatientRegistration): Patient;
+  getPatient(patientId: string): Patient;
+  updateProfile(patientId: string, updates: Partial<Patient>): Patient;
+  
+  // Health Records
+  getHealthHistory(patientId: string): HealthHistory;
+  addMedicalHistory(patientId: string, history: MedicalHistory): void;
+  getConsultations(patientId: string): Consultation[];
+  getPrescriptions(patientId: string): Prescription[];
+  getOrders(patientId: string): Order[];
+  getLabReports(patientId: string): Report[];
+  
+  // Address Management
+  addAddress(patientId: string, address: Address): Address;
+  getAddresses(patientId: string): Address[];
+  setDefaultAddress(patientId: string, addressId: string): void;
+}
+
+interface Patient {
+  id: string;
+  mobile: string;
+  email?: string;
+  name: string;
+  dateOfBirth: Date;
+  gender: 'MALE' | 'FEMALE' | 'OTHER';
+  bloodGroup?: string;
+  emergencyContact?: {
+    name: string;
+    mobile: string;
+    relation: string;
+  };
+  medicalHistory: {
+    allergies: string[];
+    chronicConditions: string[];
+    currentMedications: string[];
+    pastSurgeries: string[];
+    familyHistory: string[];
+  };
+  addresses: Address[];
+  createdAt: Date;
 }
 ```
 
-## Enhanced AI Prompt Engineering
+### Payment Service
 
-### System Prompt (AI-Only Version)
+**Purpose**: Unified payment processing for all services
 
-```
-You are an AI medical assistant providing direct medical consultations and prescriptions 
-for patients in India. You have FULL AUTHORITY to generate prescriptions that will be 
-delivered directly to patients without doctor review.
+```typescript
+interface PaymentService {
+  // Payment Processing
+  createPaymentIntent(amount: number, orderId: string, type: PaymentType): PaymentIntent;
+  processPayment(paymentId: string, method: PaymentMethod): PaymentResult;
+  refundPayment(paymentId: string, amount: number): RefundResult;
+  
+  // Wallet & Credits
+  getWalletBalance(patientId: string): number;
+  addCredits(patientId: string, amount: number): void;
+  deductCredits(patientId: string, amount: number): void;
+  
+  // Subscription
+  createSubscription(patientId: string, plan: SubscriptionPlan): Subscription;
+  cancelSubscription(subscriptionId: string): void;
+}
 
-CRITICAL RESPONSIBILITIES:
-1. You are the sole medical authority in this interaction
-2. Your prescriptions will be delivered immediately to patients
-3. Patient safety is your PRIMARY concern
-4. When in doubt, recommend in-person consultation rather than prescribing
+enum PaymentType {
+  CONSULTATION = 'CONSULTATION',
+  MEDICINE_ORDER = 'MEDICINE_ORDER',
+  LAB_BOOKING = 'LAB_BOOKING',
+  SUBSCRIPTION = 'SUBSCRIPTION'
+}
 
-STRICT SAFETY PROTOCOLS:
-1. NEVER prescribe controlled substances (opioids, benzodiazepines, stimulants)
-2. NEVER prescribe for emergency symptoms - redirect to emergency care
-3. NEVER prescribe for complex conditions - recommend specialist consultation
-4. NEVER prescribe for children under 12 years old
-5. NEVER prescribe antibiotics without strong bacterial infection indicators
-6. ALWAYS check for drug interactions and allergies
-7. ALWAYS provide conservative, evidence-based recommendations
-
-CONDITIONS YOU CAN TREAT (Common, Low-Risk):
-- Viral fever and common cold
-- Mild headaches (non-migraine)
-- Mild gastritis and acidity
-- Minor allergies
-- Mild skin rashes
-- Minor muscle pain
-- Mild cough (non-persistent)
-
-CONDITIONS REQUIRING IN-PERSON CONSULTATION:
-- Cardiac symptoms (chest pain, palpitations)
-- Neurological symptoms (severe headache, dizziness, confusion)
-- Respiratory distress
-- Severe pain of any kind
-- Symptoms lasting > 7 days
-- Pregnancy-related issues
-- Psychiatric conditions
-- Multiple chronic conditions
-- Any unclear diagnosis
-
-CONFIDENCE LEVELS:
-- HIGH: Common condition, clear symptoms, straightforward treatment
-- MEDIUM: Somewhat unclear, but treatment is safe and conservative
-- LOW: Unclear diagnosis or complex case → MUST recommend in-person visit
-
-When confidence is LOW or MEDIUM with safety concerns:
-"Based on your symptoms, I recommend seeing a doctor in person for a thorough evaluation. 
-I cannot provide an online prescription for this condition as it requires physical examination."
-
-CONSULTATION APPROACH:
-1. Gather information thoroughly (ask follow-up questions)
-2. Assess severity and complexity
-3. Determine if condition is suitable for online prescription
-4. If suitable: Generate conservative, evidence-based prescription
-5. If not suitable: Clearly explain why in-person visit is needed
-6. Always include red flags for when to seek immediate care
-
-PRESCRIPTION GENERATION TRIGGER:
-When consultation is complete and condition is suitable for online prescription, respond with:
-"Based on our discussion, I can provide you with a prescription. [GENERATE_PRESCRIPTION]"
-
-If condition is NOT suitable for online prescription:
-"For your safety, I recommend you visit a doctor in person for this condition. [REQUIRE_IN_PERSON]"
-
-TONE:
-- Professional and authoritative
-- Clear about limitations
-- Safety-focused
-- Empathetic but firm on safety boundaries
-
-You are not just gathering information - you ARE the medical authority.
-Act accordingly with appropriate caution and responsibility.
+interface PaymentIntent {
+  id: string;
+  orderId: string;
+  amount: number;
+  currency: 'INR';
+  type: PaymentType;
+  razorpayOrderId: string;
+  status: 'CREATED' | 'PROCESSING' | 'SUCCESS' | 'FAILED';
+}
 ```
 
-### Enhanced Prescription Generation Prompt
+### Order Management Service
 
+**Purpose**: Unified order tracking across services
+
+```typescript
+interface OrderManagementService {
+  // Order Tracking
+  getOrder(orderId: string, type: OrderType): Order | Booking;
+  getOrderHistory(patientId: string): OrderHistory;
+  updateOrderStatus(orderId: string, status: string): void;
+  
+  // Logistics Integration
+  assignDeliveryPartner(orderId: string): DeliveryPartner;
+  trackShipment(orderId: string): ShipmentStatus;
+  
+  // Returns & Cancellations
+  cancelOrder(orderId: string, reason: string): CancellationResult;
+  initiateReturn(orderId: string, items: string[]): ReturnRequest;
+}
+
+enum OrderType {
+  MEDICINE = 'MEDICINE',
+  LAB = 'LAB'
+}
 ```
-Generate a prescription for direct delivery to patient (no doctor review).
 
-CONSULTATION DATA:
-[Same as before - patient info, symptoms, history]
+### Notification Service
 
-CRITICAL SAFETY VALIDATION:
-Before generating prescription, verify:
-1. Confidence Level: Is diagnosis clear? (HIGH/MEDIUM/LOW)
-2. Condition Complexity: Is this treatable online? (YES/NO)
-3. Emergency Symptoms: Any present? (YES/NO)
-4. Age Appropriateness: Patient age suitable? (YES/NO)
-5. Controlled Substances: None required? (CONFIRMED/NOT_CONFIRMED)
+**Purpose**: Multi-channel notifications
 
-If ANY of the following are true, output: {"requires_in_person": true, "reason": "..."}
-- Confidence Level is LOW
-- Condition Complexity is too high for online treatment
-- Emergency Symptoms present
-- Patient age < 12 or special considerations
-- Treatment requires controlled substances
+```typescript
+interface NotificationService {
+  // Send Notifications
+  sendSMS(mobile: string, message: string): void;
+  sendEmail(email: string, subject: string, body: string): void;
+  sendPush(patientId: string, notification: PushNotification): void;
+  sendWhatsApp(mobile: string, template: string, params: any): void;
+  
+  // Notification Templates
+  consultationComplete(patientId: string, prescriptionId: string): void;
+  orderConfirmed(patientId: string, orderId: string): void;
+  orderShipped(patientId: string, orderId: string, trackingUrl: string): void;
+  labBookingConfirmed(patientId: string, bookingId: string): void;
+  reportReady(patientId: string, reportId: string): void;
+  medicineReminder(patientId: string, medicine: string, time: string): void;
+}
+```
 
-Otherwise, generate prescription in JSON format with EXTRA SAFETY FIELDS:
+---
 
+## Database Design
+
+### PostgreSQL Schema (Relational Data)
+
+**Patients Table**:
+```sql
+CREATE TABLE patients (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  mobile VARCHAR(15) UNIQUE NOT NULL,
+  email VARCHAR(255) UNIQUE,
+  name VARCHAR(100) NOT NULL,
+  date_of_birth DATE,
+  gender VARCHAR(20),
+  blood_group VARCHAR(5),
+  emergency_contact JSONB,
+  medical_history JSONB,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  
+  INDEX idx_mobile (mobile),
+  INDEX idx_email (email)
+);
+```
+
+**Consultations Table**:
+```sql
+CREATE TABLE consultations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  patient_id UUID REFERENCES patients(id),
+  status VARCHAR(50) NOT NULL,
+  language VARCHAR(10) DEFAULT 'en',
+  chief_complaint TEXT,
+  extracted_data JSONB,
+  prescription_id UUID,
+  started_at TIMESTAMP DEFAULT NOW(),
+  completed_at TIMESTAMP,
+  
+  INDEX idx_patient (patient_id),
+  INDEX idx_status (status),
+  INDEX idx_created (started_at DESC)
+);
+```
+
+**Prescriptions Table**:
+```sql
+CREATE TABLE prescriptions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  consultation_id UUID REFERENCES consultations(id),
+  erx_number VARCHAR(50) UNIQUE NOT NULL,
+  diagnosis TEXT NOT NULL,
+  medicines JSONB NOT NULL,
+  lifestyle_advice TEXT[],
+  red_flags TEXT[],
+  validity_days INTEGER DEFAULT 30,
+  confidence_level VARCHAR(20),
+  created_at TIMESTAMP DEFAULT NOW(),
+  
+  INDEX idx_consultation (consultation_id),
+  INDEX idx_erx (erx_number)
+);
+```
+
+**Medicines Table**:
+```sql
+CREATE TABLE medicines (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name VARCHAR(200) NOT NULL,
+  generic_name VARCHAR(200),
+  manufacturer VARCHAR(200),
+  category VARCHAR(100),
+  form VARCHAR(50),
+  strength VARCHAR(50),
+  pack_size VARCHAR(50),
+  mrp DECIMAL(10, 2),
+  selling_price DECIMAL(10, 2),
+  discount DECIMAL(5, 2),
+  prescription_required BOOLEAN DEFAULT TRUE,
+  schedule VARCHAR(5),
+  composition TEXT,
+  uses TEXT[],
+  side_effects TEXT[],
+  images TEXT[],
+  is_active BOOLEAN DEFAULT TRUE,
+  created_at TIMESTAMP DEFAULT NOW(),
+  
+  INDEX idx_name (name),
+  INDEX idx_generic (generic_name),
+  INDEX idx_category (category),
+  INDEX idx_price (selling_price)
+);
+```
+
+**Inventory Table**:
+```sql
+CREATE TABLE inventory (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  medicine_id UUID REFERENCES medicines(id),
+  warehouse_id UUID REFERENCES warehouses(id),
+  quantity INTEGER NOT NULL,
+  batch_number VARCHAR(50),
+  expiry_date DATE NOT NULL,
+  reorder_level INTEGER DEFAULT 10,
+  last_restocked TIMESTAMP,
+  
+  UNIQUE (medicine_id, warehouse_id, batch_number),
+  INDEX idx_medicine (medicine_id),
+  INDEX idx_warehouse (warehouse_id),
+  INDEX idx_expiry (expiry_date)
+);
+```
+
+**Orders Table**:
+```sql
+CREATE TABLE orders (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_number VARCHAR(50) UNIQUE NOT NULL,
+  patient_id UUID REFERENCES patients(id),
+  prescription_id UUID REFERENCES prescriptions(id),
+  order_type VARCHAR(20) NOT NULL, -- 'MEDICINE' or 'LAB'
+  items JSONB NOT NULL,
+  pricing JSONB NOT NULL,
+  delivery_address JSONB NOT NULL,
+  payment_id UUID,
+  payment_status VARCHAR(20),
+  order_status VARCHAR(50),
+  warehouse_id UUID,
+  delivery_partner_id UUID,
+  tracking_url TEXT,
+  estimated_delivery TIMESTAMP,
+  delivered_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT NOW(),
+  
+  INDEX idx_patient (patient_id),
+  INDEX idx_order_number (order_number),
+  INDEX idx_status (order_status),
+  INDEX idx_created (created_at DESC)
+);
+```
+
+**Lab Bookings Table**:
+```sql
+CREATE TABLE lab_bookings (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  booking_number VARCHAR(50) UNIQUE NOT NULL,
+  patient_id UUID REFERENCES patients(id),
+  consultation_id UUID REFERENCES consultations(id),
+  lab_partner_id UUID REFERENCES lab_partners(id),
+  tests JSONB NOT NULL,
+  collection_type VARCHAR(20),
+  collection_address JSONB,
+  scheduled_slot TIMESTAMP,
+  pricing JSONB NOT NULL,
+  payment_id UUID,
+  payment_status VARCHAR(20),
+  booking_status VARCHAR(50),
+  partner_booking_id VARCHAR(100),
+  report_id UUID,
+  created_at TIMESTAMP DEFAULT NOW(),
+  
+  INDEX idx_patient (patient_id),
+  INDEX idx_booking_number (booking_number),
+  INDEX idx_status (booking_status),
+  INDEX idx_scheduled (scheduled_slot)
+);
+```
+
+**Lab Reports Table**:
+```sql
+CREATE TABLE lab_reports (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  booking_id UUID REFERENCES lab_bookings(id),
+  patient_id UUID REFERENCES patients(id),
+  test_results JSONB NOT NULL,
+  file_url TEXT NOT NULL,
+  ai_analysis JSONB,
+  uploaded_at TIMESTAMP DEFAULT NOW(),
+  
+  INDEX idx_booking (booking_id),
+  INDEX idx_patient (patient_id),
+  INDEX idx_uploaded (uploaded_at DESC)
+);
+```
+
+**Payments Table**:
+```sql
+CREATE TABLE payments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  patient_id UUID REFERENCES patients(id),
+  order_id UUID,
+  amount DECIMAL(10, 2) NOT NULL,
+  payment_type VARCHAR(20) NOT NULL,
+  payment_method VARCHAR(50),
+  razorpay_order_id VARCHAR(100),
+  razorpay_payment_id VARCHAR(100),
+  status VARCHAR(20) NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW(),
+  completed_at TIMESTAMP,
+  
+  INDEX idx_patient (patient_id),
+  INDEX idx_order (order_id),
+  INDEX idx_status (status)
+);
+```
+
+### MongoDB Collections (Document Store)
+
+**Consultation Messages**:
+```javascript
 {
-  "safe_for_online_prescription": true,
-  "confidence_level": "HIGH",
-  "diagnosis": "...",
-  "urgency": "ROUTINE",
-  "medications": [
+  _id: ObjectId,
+  consultationId: UUID,
+  messages: [
     {
-      "medicine_name": "Generic name only",
-      "dosage": "Specific dosage",
-      "frequency": "Clear frequency",
-      "duration": "Conservative duration (usually 3-5 days)",
-      "instructions": "Detailed instructions",
-      "rationale": "Why this medication",
-      "safety_profile": "LOW_RISK" // LOW_RISK, MEDIUM_RISK, HIGH_RISK
+      role: "user" | "assistant",
+      content: String,
+      audioUrl: String, // if voice input
+      timestamp: Date
     }
   ],
-  "lifestyle_advice": ["..."],
-  "red_flags": [
-    "When to stop medication",
-    "When to seek immediate care",
-    "When to follow up with doctor"
+  createdAt: Date,
+  updatedAt: Date
+}
+```
+
+**Product Reviews**:
+```javascript
+{
+  _id: ObjectId,
+  medicineId: UUID,
+  patientId: UUID,
+  rating: Number, // 1-5
+  review: String,
+  verified: Boolean, // purchased from platform
+  createdAt: Date
+}
+```
+
+**Lab Partner Data**:
+```javascript
+{
+  _id: ObjectId,
+  partnerId: UUID,
+  name: String,
+  accreditation: [String],
+  rating: Number,
+  servicedPincodes: [String],
+  availableTests: [
+    {
+      testId: UUID,
+      price: Number,
+      reportTime: String
+    }
   ],
-  "follow_up_required": "3 days if no improvement",
-  "alternative_recommendation": "If symptoms worsen, visit emergency room",
-  "confidence_rationale": "Why this diagnosis is clear",
-  "contraindications_checked": true,
-  "drug_interactions_checked": true,
-  "allergy_checked": true
+  homeCollectionSlots: [
+    {
+      date: Date,
+      slots: [String]
+    }
+  ],
+  labLocations: [
+    {
+      address: String,
+      pincode: String,
+      coordinates: { lat: Number, lng: Number }
+    }
+  ]
 }
-
-PRESCRIPTION CONSTRAINTS (Stricter than Doctor-Reviewed):
-- Maximum prescription duration: 5 days (conservative)
-- Only generic medicines from approved list
-- Only LOW_RISK medications
-- No antibiotics unless absolutely clear bacterial infection
-- No medications with HIGH_RISK safety profile
-- Dosages on the lower end of therapeutic range
-- Always include "when to stop and see doctor" guidance
-
-If uncertain about ANY aspect, output: {"requires_in_person": true}
 ```
 
-## Risk Management & Liability
+---
 
-### Legal Considerations
+## Technology Stack
 
-**Disclaimer Requirements (Prominent Display)**:
+### Frontend
+- **Framework**: React 18 + TypeScript
+- **State Management**: Redux Toolkit + RTK Query
+- **UI Library**: Material-UI (MUI) or Ant Design
+- **Mobile**: React Native (future)
+- **Build Tool**: Vite
+
+### Backend
+- **Language**: Node.js + TypeScript
+- **Framework**: NestJS (structured, scalable)
+- **API**: REST + GraphQL (for complex queries)
+- **Authentication**: JWT + Passport.js
+- **Validation**: Zod or Joi
+
+### Databases
+- **Relational**: PostgreSQL 14 (AWS RDS)
+- **Document**: MongoDB Atlas
+- **Cache**: Redis (AWS ElastiCache)
+- **Search**: Elasticsearch (for medicine catalog)
+
+### Cloud Infrastructure (AWS)
+- **Compute**: ECS Fargate
+- **API Gateway**: AWS API Gateway
+- **Storage**: S3 (prescriptions, reports)
+- **CDN**: CloudFront
+- **Functions**: Lambda (async tasks)
+- **Queue**: SQS (order processing)
+
+### External Services
+- **AI**: OpenAI GPT-4 API
+- **Payment**: Razorpay
+- **SMS**: AWS SNS or Twilio
+- **Email**: AWS SES
+- **Maps**: Google Maps API (delivery tracking)
+- **Analytics**: Mixpanel or Amplitude
+
+---
+
+## User Journeys
+
+### Journey 1: Complete Healthcare Flow
 
 ```
-IMPORTANT MEDICAL DISCLAIMER
+Step 1: Patient feels unwell
+    ↓
+Step 2: Opens app, starts AI consultation
+    ↓
+Step 3: Chats with AI (3-5 minutes)
+    ↓
+Step 4: Receives AI-generated prescription
+    ↓
+Step 5: One-click "Order Medicines" from prescription
+    ↓
+Step 6: Reviews cart, selects generic alternatives if desired
+    ↓
+Step 7: Proceeds to checkout, pays ₹350
+    ↓
+Step 8: AI suggests relevant lab tests (e.g., "Consider CBC test")
+    ↓
+Step 9: Patient books lab test for ₹200
+    ↓
+Step 10: Schedules home collection for next morning
+    ↓
+Step 11: Pays ₹200 for lab test
+    ↓
+Step 12: Receives medicine delivery in 1 hour
+    ↓
+Step 13: Lab technician collects sample next day
+    ↓
+Step 14: Receives report via app in 24 hours
+    ↓
+Step 15: AI analyzes report, provides summary
+    ↓
+Step 16: Follow-up consultation if needed (free or discounted)
 
-This prescription is generated by an AI system without review by a licensed physician.
-
-LIMITATIONS:
-- This service is suitable only for common, minor ailments
-- AI cannot replace physical examination by a doctor
-- Certain conditions require in-person medical consultation
-- In emergencies, call emergency services immediately
-
-PATIENT RESPONSIBILITY:
-- You must provide accurate medical information
-- You must follow prescription instructions exactly
-- You must seek in-person care if symptoms worsen
-- You assume responsibility for using this AI-only service
-
-LIABILITY:
-- By using this service, you acknowledge and accept the risks
-- This service is not liable for misdiagnosis or treatment complications
-- We strongly recommend follow-up with a licensed physician
-
-If you prefer doctor-reviewed prescriptions, please use our premium service.
+Total Time: 10 minutes (excluding delivery wait)
+Total Cost: ₹50 (consultation) + ₹350 (medicines) + ₹200 (lab) = ₹600
 ```
 
-### Insurance & Risk Mitigation
+### Journey 2: Repeat Prescription Refill
 
-**Required Protections**:
-1. **Professional Liability Insurance**: Cover AI-generated prescriptions
-2. **Terms of Service**: Clear liability limitations
-3. **User Agreement**: Explicit acceptance of AI-only service
-4. **Audit Trail**: Complete logging of all AI decisions
-5. **Safety Monitoring**: Track adverse events and prescription modifications
-6. **Fallback to Human Review**: For 5-10% of cases flagged as high-risk
+```
+Step 1: Patient needs medicine refill
+    ↓
+Step 2: Opens app, goes to "Past Prescriptions"
+    ↓
+Step 3: Selects previous prescription
+    ↓
+Step 4: Clicks "Reorder Medicines"
+    ↓
+Step 5: Auto-filled cart, checkout
+    ↓
+Step 6: Delivery in 1 hour
 
-### Quality Assurance
+Time: 2 minutes
+```
 
-**Post-Deployment Monitoring**:
+### Journey 3: Preventive Health Checkup
+
+```
+Step 1: Patient wants health checkup
+    ↓
+Step 2: Opens "Lab Tests" section
+    ↓
+Step 3: Browses popular packages (Annual, Diabetes, Thyroid)
+    ↓
+Step 4: Selects "Complete Health Checkup" (₹1,299)
+    ↓
+Step 5: Chooses lab partner and home collection
+    ↓
+Step 6: Schedules convenient time slot
+    ↓
+Step 7: Pays and confirms
+    ↓
+Step 8: Sample collected at home
+    ↓
+Step 9: Reports uploaded in 48 hours
+    ↓
+Step 10: AI highlights abnormal values
+    ↓
+Step 11: Recommends follow-up consultation if needed
+```
+
+---
+
+## Integration Workflows
+
+### Workflow 1: Prescription → Medicine Order
 
 ```typescript
-interface QualityMetrics {
-  // Safety Metrics
-  adverse_events_reported: number;
-  emergency_redirections: number;
-  flagged_for_manual_review: number;
+async function prescriptionToOrder(prescriptionId: string, patientId: string) {
+  // 1. Fetch prescription
+  const prescription = await getPrescription(prescriptionId);
   
-  // Quality Metrics
-  prescription_modification_rate: number; // if patients see doctors later
-  patient_satisfaction_score: number;
-  symptom_resolution_rate: number;
+  // 2. Create cart from prescribed medicines
+  const cart = await createCartFromPrescription(prescription);
   
-  // AI Performance
-  confidence_distribution: {
-    HIGH: number;
-    MEDIUM: number;
-    LOW: number;
-  };
-  
-  // Safety Triggers
-  allergy_conflict_prevented: number;
-  drug_interaction_prevented: number;
-  controlled_substance_blocked: number;
-}
-
-// Alert thresholds
-const ALERT_THRESHOLDS = {
-  adverse_events_per_1000: 5,  // Alert if > 5 per 1000 prescriptions
-  emergency_redirection_rate: 0.02, // Alert if > 2%
-  patient_satisfaction: 4.0,  // Alert if < 4.0/5.0
-};
-```
-
-## Cost Comparison: Doctor-Reviewed vs AI-Only
-
-### Monthly Cost Breakdown (10,000 consultations/day = 300,000/month)
-
-| Component | Doctor-Reviewed | AI-Only | Savings |
-|-----------|----------------|---------|---------|
-| **Infrastructure** | | | |
-| ECS Fargate (compute) | $150 | $100 | $50 |
-| RDS PostgreSQL | $200 | $150 | $50 |
-| ElastiCache Redis | $100 | $75 | $25 |
-| S3 Storage | $3 | $3 | $0 |
-| CloudFront CDN | $50 | $40 | $10 |
-| Data Transfer | $100 | $80 | $20 |
-| CloudWatch & Logging | $50 | $40 | $10 |
-| **AWS Subtotal** | **$653** | **$488** | **$165** |
-| | | | |
-| **External Services** | | | |
-| OpenAI API (300K × cost) | $30,000 | $24,000 | $6,000 |
-| SMS Notifications | $6,000 | $3,000 | $3,000 |
-| **External Subtotal** | **$36,000** | **$27,000** | **$9,000** |
-| | | | |
-| **Operational Costs** | | | |
-| Doctor Payments (300K × $1.50) | $450,000 | $0 | $450,000 |
-| Doctor Platform Support | $5,000 | $0 | $5,000 |
-| **Operational Subtotal** | **$455,000** | **$0** | **$455,000** |
-| | | | |
-| **TOTAL MONTHLY COST** | **$491,653** | **$27,488** | **$464,165** |
-| **Cost Per Consultation** | **$1.64** | **$0.09** | **$1.55 (94% savings)** |
-
-### Cost Analysis Details
-
-**Why AI-Only is Cheaper**:
-
-1. **No Doctor Payments** ($450K/month savings):
-   - No per-consultation doctor fees ($1-2 per consultation)
-   - No doctor recruitment/training costs
-   - No doctor dashboard development/maintenance
-
-2. **Lower OpenAI Costs** ($6K/month savings):
-   - Shorter conversations (3-5 min vs 10 min) = fewer tokens
-   - No back-and-forth with doctor dashboard
-   - Estimated 20% fewer tokens per consultation
-
-3. **Reduced Infrastructure** ($165/month savings):
-   - Simpler architecture (fewer services)
-   - Lower database load (no doctor queries)
-   - Smaller compute requirements (no queue management)
-   - Less Redis cache needed
-
-4. **Fewer Notifications** ($3K/month savings):
-   - No doctor notifications
-   - No queue alerts
-   - Only patient notifications (50% reduction)
-
-### Revenue Model Comparison
-
-**Doctor-Reviewed Model**:
-- Price per consultation: ₹199 ($2.40)
-- Cost per consultation: $1.64
-- Gross margin: 32% ($0.76 per consultation)
-- Monthly revenue at 300K: $720,000
-- Monthly profit: $228,347
-
-**AI-Only Model**:
-- Price per consultation: ₹49 ($0.60) - 75% cheaper
-- Cost per consultation: $0.09
-- Gross margin: 85% ($0.51 per consultation)
-- Monthly revenue at 300K: $180,000
-- Monthly profit: $152,512
-
-**Alternative: Tiered Pricing**:
-```
-AI-Only Tier:
-- ₹49 per consultation ($0.60)
-- Instant delivery, no doctor review
-- 85% gross margin
-- Target volume: 80% of users
-
-Doctor-Reviewed Tier:
-- ₹199 per consultation ($2.40)
-- Human oversight, peace of mind
-- 32% gross margin
-- Target volume: 20% of users
-
-Blended margin at 80/20 split: 74%
-```
-
-### Break-Even Analysis
-
-**AI-Only Model**:
-- Fixed costs: $27,488/month
-- Variable cost per consultation: ~$0.05
-- Break-even at ₹49 ($0.60) per consultation: 50,000 consultations/month (1,667/day)
-- Compared to Doctor-Reviewed: 283,000 consultations/month (9,433/day)
-
-**Time to Break-Even** (with user acquisition costs):
-- AI-Only: 2-3 months to reach 1,667 daily consultations
-- Doctor-Reviewed: 8-12 months to reach 9,433 daily consultations
-
-## Deployment Architecture (Simplified)
-
-### AWS Infrastructure (AI-Only)
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    AWS Region: ap-south-1 (Mumbai)               │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                  │
-│  ┌────────────────────────────────────────────────────────┐    │
-│  │  CloudFront CDN                                         │    │
-│  │  - Patient Web App (S3 Origin)                          │    │
-│  │  - Prescription PDFs (S3 + signed URLs)                 │    │
-│  └─────────────────────┬──────────────────────────────────┘    │
-│                        │                                         │
-│  ┌─────────────────────▼──────────────────────────────────┐    │
-│  │  API Gateway (REST API)                                 │    │
-│  │  - Rate limiting                                        │    │
-│  │  - JWT auth                                             │    │
-│  └─────────────────────┬──────────────────────────────────┘    │
-│                        │                                         │
-│  ┌─────────────────────▼──────────────────────────────────┐    │
-│  │  Application Load Balancer                              │    │
-│  └─────────────────────┬──────────────────────────────────┘    │
-│                        │                                         │
-│  ┌─────────────────────▼──────────────────────────────────┐    │
-│  │  VPC (Private Subnets)                                  │    │
-│  │                                                          │    │
-│  │  ┌───────────────────────────────────────┐             │    │
-│  │  │  ECS Fargate Cluster                   │             │    │
-│  │  │  - Backend API (Min: 2, Max: 10)       │             │    │
-│  │  │  - Smaller instances (1 vCPU, 2GB)     │             │    │
-│  │  └──────────┬──────────────┬──────────────┘             │    │
-│  │             │              │                             │    │
-│  │  ┌──────────▼────┐  ┌─────▼──────────┐                 │    │
-│  │  │  Redis       │  │  PostgreSQL    │                 │    │
-│  │  │  (2 nodes)   │  │  (smaller)     │                 │    │
-│  │  └──────────────┘  └────────────────┘                 │    │
-│  │                                                          │    │
-│  └──────────────────────────────────────────────────────────┘   │
-│                                                                  │
-│  External: OpenAI API, AWS SNS, AWS S3                          │
-│                                                                  │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-**Scaling Configuration (Reduced)**:
-- ECS Tasks: Min 2, Max 10 (vs 2-20 in doctor-reviewed)
-- No doctor dashboard infrastructure
-- Smaller database instance (db.t3.medium vs db.t3.large)
-- 2-node Redis cluster (vs 3-node)
-
-## Implementation Roadmap (AI-Only)
-
-### Faster Development Timeline: 6 Weeks (vs 8 weeks)
-
-**Week 1-2: Foundation** (Same as doctor-reviewed)
-- AWS infrastructure setup
-- Database schema (simplified)
-- Authentication system
-- Frontend scaffolding
-
-**Week 3-4: AI Agent Development** (Enhanced)
-- OpenAI integration with enhanced safety prompts
-- Automated prescription validation system
-- Emergency detection and redirection
-- Medical knowledge base (100 common conditions/medicines)
-- **No doctor review workflow needed** ✓
-
-**Week 5: Patient Experience**
-- Chat interface with voice-to-text
-- Instant prescription delivery
-- PDF generation
-- Consultation history
-- **No doctor dashboard needed** ✓
-
-**Week 6: Testing & Launch**
-- End-to-end testing
-- Safety testing (critical!)
-- Legal disclaimer integration
-- Load testing
-- Production deployment
-
-**Savings: 2 weeks** (no doctor dashboard development)
-
-## Risk Assessment: AI-Only vs Doctor-Reviewed
-
-| Risk Category | Doctor-Reviewed | AI-Only | Mitigation Strategy |
-|---------------|----------------|---------|---------------------|
-| **Medical Safety** | LOW | MEDIUM | Strict AI safety rules, automated validation |
-| **Regulatory Compliance** | MEDIUM | HIGH | Legal counsel, clear disclaimers, terms of service |
-| **Liability Exposure** | LOW | HIGH | Insurance, liability waivers, audit trails |
-| **Patient Trust** | HIGH | MEDIUM | Transparent AI limitations, positive reviews |
-| **AI Accuracy** | MEDIUM | HIGH | Conservative prescriptions, manual review fallback |
-| **Operational Complexity** | HIGH | LOW | Simpler system, fewer dependencies |
-| **Scalability** | MEDIUM | HIGH | No doctor bottleneck, pure automation |
-| **Cost Efficiency** | MEDIUM | HIGH | 94% lower cost per consultation |
-
-## Hybrid Option: "Express" and "Reviewed" Tiers
-
-### Best of Both Worlds
-
-```
-┌─────────────────────────────────────────────────────────┐
-│               Patient Selects Service Tier               │
-└────────────────┬────────────────────────┬────────────────┘
-                 │                        │
-        ┌────────▼────────┐      ┌───────▼───────┐
-        │  EXPRESS Tier   │      │ REVIEWED Tier │
-        │   (AI-Only)     │      │ (Doctor-Rev)  │
-        │   ₹49 / $0.60   │      │ ₹199 / $2.40  │
-        │   3-5 minutes   │      │ 15-30 minutes │
-        └────────┬────────┘      └───────┬───────┘
-                 │                        │
-                 ▼                        ▼
-           Instant Delivery        Doctor Reviews
-```
-
-**Routing Logic**:
-```typescript
-function recommendTier(consultation: Consultation): ServiceTier {
-  const riskFactors = assessRiskFactors(consultation);
-  
-  // Force doctor review for high-risk
-  if (riskFactors.includes('COMPLEX_CONDITION') ||
-      riskFactors.includes('MULTIPLE_MEDICATIONS') ||
-      riskFactors.includes('CHRONIC_DISEASE') ||
-      consultation.patient.age < 18 ||
-      consultation.confidence_level === 'LOW') {
-    return 'REVIEWED_REQUIRED';
+  // 3. Check inventory availability
+  for (const item of cart.items) {
+    const availability = await checkInventory(
+      item.medicineId,
+      item.quantity,
+      patient.defaultAddress.pincode
+    );
+    
+    if (!availability.available) {
+      // Find alternatives
+      item.alternatives = await findAlternatives(item.medicineId);
+    }
   }
   
-  // Allow patient choice for low-risk
-  return 'EXPRESS_AVAILABLE';
+  // 4. Calculate pricing
+  const pricing = await calculatePricing(cart);
+  
+  // 5. Show cart to patient with one-click checkout
+  return {
+    cart,
+    pricing,
+    quickCheckoutAvailable: true
+  };
 }
 ```
 
-**Pricing Strategy**:
-- **Express (AI-Only)**: ₹49 for simple, common conditions
-- **Reviewed (Doctor)**: ₹199 for peace of mind or complex cases
-- **Auto-upgrade**: Some cases automatically routed to Reviewed tier for safety
+### Workflow 2: Consultation → Lab Recommendation
 
-**Expected Distribution**:
-- 70% Express tier → Lower cost, higher volume
-- 30% Reviewed tier → Higher margin, complex cases
+```typescript
+async function recommendLabTests(consultation: Consultation) {
+  const diagnosis = consultation.prescription.diagnosis;
+  const symptoms = consultation.extractedData.symptoms;
+  
+  // AI recommends tests
+  const recommendations = await aiRecommendLabTests(diagnosis, symptoms);
+  
+  // Match with available tests
+  const tests = await getLabTests(recommendations.testNames);
+  
+  // Find affordable labs in patient's area
+  const labs = await getLabPartners(patient.defaultAddress.pincode);
+  
+  // Show as post-consultation suggestion
+  return {
+    message: "Based on your consultation, these tests are recommended:",
+    tests: tests.map(t => ({
+      name: t.name,
+      price: t.price,
+      labs: labs.filter(l => l.availableTests.includes(t.id))
+    }))
+  };
+}
+```
 
-**Blended Economics** (at 300K consultations/month):
-- Express (210K): Revenue $126K, Cost $18.9K, Profit $107.1K
-- Reviewed (90K): Revenue $216K, Cost $147.6K, Profit $68.4K
-- **Total Profit**: $175.5K/month
-- **Blended margin**: 51%
+### Workflow 3: Lab Report → Follow-up Consultation
 
-## Recommendation: Which Model to Choose?
+```typescript
+async function analyzeReportAndSuggestFollowup(reportId: string) {
+  const report = await getLabReport(reportId);
+  
+  // AI analyzes report
+  const analysis = await aiAnalyzeReport(report);
+  
+  if (analysis.severity === 'ATTENTION_NEEDED' || analysis.severity === 'URGENT') {
+    // Auto-suggest follow-up consultation
+    await notificationService.sendPush(report.patientId, {
+      title: "Lab Report Ready",
+      body: "Your report shows some abnormal values. We recommend a follow-up consultation.",
+      action: {
+        type: "START_CONSULTATION",
+        discount: 50 // 50% off for follow-up
+      }
+    });
+  }
+  
+  return analysis;
+}
+```
 
-### Choose AI-Only If:
-✅ Targeting price-sensitive market (tier 2/3 cities)
-✅ Focus on common, low-risk conditions only
-✅ Strong legal team and insurance in place
-✅ Need rapid scaling without operational complexity
-✅ Lower pricing strategy to capture market share
+---
 
-### Choose Doctor-Reviewed If:
-✅ Targeting premium, urban market
-✅ Handling diverse medical conditions
-✅ Prioritizing patient trust and safety
-✅ Regulatory environment is uncertain
-✅ Building long-term medical reputation
+## Cost Estimation & Pricing
 
-### Choose Hybrid (Recommended) If:
-✅ Want to serve multiple market segments
-✅ Can manage more complex product offering
-✅ Want to maximize both volume and margin
-✅ Can educate users on tier differences
-✅ Have resources to build both systems
+### Infrastructure Costs (Monthly at 10K consultations/day)
+
+| Component | Specification | Monthly Cost |
+|-----------|--------------|--------------|
+| **Compute** | | |
+| ECS Fargate | 4 tasks × 2 vCPU × 4GB | $200 |
+| Lambda Functions | 5M invocations | $50 |
+| **Database** | | |
+| RDS PostgreSQL | db.t3.large Multi-AZ | $200 |
+| MongoDB Atlas | M10 cluster | $100 |
+| Redis Cache | cache.t3.medium | $75 |
+| **Storage** | | |
+| S3 Storage | 500GB | $12 |
+| CloudFront | 2TB transfer | $150 |
+| **Search** | | |
+| Elasticsearch | 3-node cluster | $150 |
+| **Misc** | | |
+| API Gateway | 50M requests | $50 |
+| CloudWatch | Logs + Metrics | $50 |
+| **AWS Total** | | **$1,037** |
+| | | |
+| **External Services** | | |
+| OpenAI API | 300K consultations | $24,000 |
+| Razorpay | 2.5% on ₹40M GMV | $24,000 |
+| SMS | 900K messages × $0.01 | $9,000 |
+| **External Total** | | **$57,000** |
+| | | |
+| **TOTAL MONTHLY** | | **$58,037** |
+
+### Revenue Model (Monthly at 10K/day)
+
+**Consultation Revenue**:
+- 300,000 consultations × ₹50 = ₹15M ($180K)
+
+**Medicine Sales**:
+- 70% conversion × 300K = 210,000 orders
+- Average order: ₹400
+- Revenue: ₹84M ($1M)
+- Margin: 20% = ₹16.8M ($200K)
+
+**Lab Bookings**:
+- 30% take rate × 300K = 90,000 bookings
+- Average booking: ₹600
+- Revenue: ₹54M ($648K)
+- Commission: 15% = ₹8.1M ($97.2K)
+
+**Total Monthly Revenue**: $1.83M
+**Total Monthly Costs**: $58K
+**Gross Profit**: $1.77M (97% margin)
+**Operating Costs** (team, marketing): ~$500K
+**Net Profit**: ~$1.27M (69% margin)
+
+---
+
+## Security & Compliance
+
+### Data Security
+1. **Encryption**:
+   - TLS 1.3 for all data in transit
+   - AES-256 encryption for data at rest
+   - Patient health data encrypted at field level
+
+2. **Access Control**:
+   - Role-based access (Patient, Admin, Warehouse, Lab Partner)
+   - JWT tokens with 15-minute expiry
+   - API rate limiting: 100 req/min per user
+
+3. **PII Protection**:
+   - Personal Identifiable Information masked in logs
+   - Secure storage of Aadhaar/PAN (if collected)
+   - GDPR-like data deletion rights
+
+### Compliance
+1. **Medical Regulations**:
+   - Electronic prescription format compliance
+   - Drug schedule tracking (H, H1, X substances)
+   - Prescription validity enforcement
+
+2. **E-Commerce Regulations**:
+   - GST calculation and invoicing
+   - Return/refund policy enforcement
+   - Consumer protection compliance
+
+3. **Data Protection**:
+   - Consent management
+   - Data retention policies (7 years for medical records)
+   - Audit trails for all data access
+
+---
+
+## Monitoring & Operations
+
+### Key Metrics Dashboard
+
+**Health Metrics**:
+- API response times (p50, p95, p99)
+- Error rates by service
+- OpenAI API latency and failures
+- Database query performance
+
+**Business Metrics**:
+- Daily consultations
+- Prescription-to-order conversion rate
+- Average order value
+- Lab booking rate
+- Customer lifetime value
+
+**Operational Metrics**:
+- Inventory levels by warehouse
+- Order fulfillment time
+- Medicine delivery SLA compliance
+- Lab report turnaround time
+
+### Alerting
+
+**Critical Alerts**:
+- OpenAI API failure (> 5%)
+- Payment gateway down
+- Inventory below reorder level
+- Database connection failures
+
+**Warning Alerts**:
+- High API latency (> 3s)
+- Low conversion rates
+- Warehouse stock outs
+- Lab partner SLA breach
+
+---
+
+## Implementation Roadmap
+
+### Phase 1: MVP (Weeks 1-10)
+
+**Weeks 1-3: Core Services**
+- Patient service + authentication
+- AI consultation service (basic)
+- Medicine catalog (500 medicines)
+- Basic order management
+
+**Weeks 4-6: E-Commerce**
+- Shopping cart + checkout
+- Payment integration (Razorpay)
+- Single warehouse inventory
+- Order tracking
+
+**Weeks 7-8: Lab Integration**
+- Lab test catalog
+- Partner integration (1-2 labs)
+- Booking flow
+- Report upload
+
+**Weeks 9-10: Polish & Testing**
+- End-to-end testing
+- Security audit
+- Load testing
+- Beta launch
+
+### Phase 2: Scale (Months 3-6)
+
+- Multi-warehouse logistics
+- Advanced AI features
+- Medicine subscriptions
+- Health records management
+- Mobile app (React Native)
+- 5+ lab partners
+- Referral program
+
+### Phase 3: Platform (Months 6-12)
+
+- White-label solutions
+- Corporate health plans
+- Insurance integration
+- Chronic disease management
+- Telemedicine (video calls)
+- Pharmacy franchising
+
+---
 
 ## Conclusion
 
-The **AI-Only model** offers compelling economics with 94% cost savings and instant delivery, making healthcare consultation accessible at ₹49 per consultation. However, it carries higher medical and regulatory risks that must be carefully managed through:
+This integrated healthcare platform combines AI consultation, e-commerce, and lab services into a seamless experience. The architecture is designed for:
 
-1. **Strict AI safety protocols** - Automated validation, conservative prescriptions
-2. **Clear liability disclaimers** - User acknowledgment of AI-only service
-3. **Manual review fallback** - For 5-10% of high-risk cases
-4. **Comprehensive monitoring** - Track adverse events and quality metrics
-5. **Insurance coverage** - Professional liability for AI decisions
+1. **Scalability**: Handle 10K+ daily consultations and orders
+2. **Integration**: Seamless data flow between services
+3. **Extensibility**: Easy to add new services (imaging, physiotherapy, etc.)
+4. **Economics**: Strong unit economics with 69% net margin at scale
+5. **User Experience**: 10-minute end-to-end healthcare journey
 
-**Recommended Approach**: Start with **Hybrid model** offering both Express (AI-only) and Reviewed (Doctor) tiers. This:
-- Reduces risk while testing AI-only approach
-- Serves multiple customer segments
-- Provides fallback for complex cases
-- Optimizes unit economics
-- Builds trust gradually
+**Next Steps**:
+1. Validate architecture with technical team
+2. Finalize lab partner integrations
+3. Build MVP in 10 weeks
+4. Pilot with 100 users
+5. Scale to production
 
-**Cost Summary**:
-- Doctor-Reviewed Only: $1.64/consultation, 32% margin
-- AI-Only: $0.09/consultation, 85% margin
-- Hybrid (70/30): $0.54/consultation, 51% margin
-
-The hybrid approach balances innovation with responsibility, allowing aggressive pricing for simple cases while maintaining medical oversight for complex situations.
+**Key Success Factors**:
+- AI prescription quality (>90% confidence)
+- Fast medicine delivery (<2 hours)
+- Reliable lab partners (>95% on-time)
+- Competitive pricing (20% below market)
+- Seamless user experience
